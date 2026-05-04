@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <link rel="icon" type="image/png" href="Neon-Survivor.png">
-    <meta property="og:title" content="Neon Survivor 2.0">
+    <meta property="og:title" content="Neon Survivor">
     <meta property="og:description" content="挑戰你的反應極限，在霓虹世界中生存下去！">
     <meta property="og:image" content="https://s11331136.github.io/Neon-Survivor_2.0/Neon-Survivor.png">
     <meta charset="UTF-8">
@@ -26,9 +26,6 @@
         .char-card h3 { margin: 10px 0; color: #00ffcc; }
         .char-card p { font-size: 14px; color: #bbb; line-height: 1.4; }
         
-        .locked { filter: grayscale(1) brightness(0.5); cursor: not-allowed; border: 2px dashed #444 !important; }
-        .locked:hover { transform: none !important; box-shadow: none !important; }
-
         #upgrade-screen, #pause-menu { background: rgba(0, 0, 0, 0.9); display: none; }
         .card-container { display: flex; gap: 15px; }
         .upgrade-card { background: linear-gradient(145deg, #1a1a1a, #0a0a0a); border: 2px solid #ffcc00; padding: 25px; width: 220px; border-radius: 15px; cursor: pointer; transition: 0.2s; }
@@ -61,25 +58,17 @@
         #boss-ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); display: none; width: 50%; pointer-events: none; }
         #boss-bar-box { width: 100%; height: 15px; background: rgba(0,0,0,0.5); border: 1px solid #ff0055; }
         #boss-bar { width: 100%; height: 100%; background: #ff0055; transition: width 0.1s; }
-        #login-section input:focus { outline: none; border-color: #00ffcc; box-shadow: 0 0 10px #00ffcc; }
+
+        /* 新增：Dash UI 提示 */
+        #dash-ui { font-size: 14px; color: #00ffcc; margin-top: 5px; opacity: 0.8; }
     </style>
 </head>
 <body>
+
     <div id="main-menu" class="overlay">
         <h1>NEON SURVIVOR</h1>
-        
-        <div id="login-section" style="background: rgba(0, 255, 204, 0.1); padding: 25px; border-radius: 15px; border: 1px solid #00ffcc; margin-bottom: 20px; width: 300px;">
-            <input type="text" id="username" placeholder="USERNAME" style="width: 80%; padding: 10px; margin-bottom: 10px; background: #000; border: 1px solid #444; color: #fff; text-align: center;">
-            <input type="password" id="password" placeholder="PASSWORD" style="width: 80%; padding: 10px; margin-bottom: 15px; background: #000; border: 1px solid #444; color: #fff; text-align: center;">
-            <div style="display: flex; gap: 10px; justify-content: center;">
-                <button class="btn-start" onclick="handleAuth('login')" style="font-size: 14px; padding: 10px 20px;">LOGIN</button>
-                <button class="btn-start" onclick="handleAuth('register')" style="font-size: 14px; padding: 10px 20px; border-color: #ffcc00; color: #ffcc00;">SIGN UP</button>
-            </div>
-            <p id="auth-msg" style="color: #ff4444; font-size: 14px; margin-top: 10px; height: 1.2em;"></p>
-        </div>
-
-        <p class="controls-hint">WASD: Move | Left Click: Shoot | Right Click: Neon Ring (Hold)</p>
-        <button class="btn-start" id="enter-btn" onclick="toCharSelect()" style="display: none;">ENTER SYSTEM</button>
+        <p class="controls-hint">WASD: Move | Shift: Dash | Left Click: Shoot | Right Click: Neon Ring (Hold)</p>
+        <button class="btn-start" onclick="toCharSelect()">ENTER<br>SYSTEM</button>
     </div>
 
     <div id="char-select" class="overlay">
@@ -97,10 +86,6 @@
                 <h3>🛡️ Fortress</h3>
                 <p>Tanky & Double ATK</p>
             </div>
-            <div class="char-card locked" id="card-void" onclick="selectChar('void')">
-                <h3 id="void-title">🔒 ???</h3>
-                <p id="void-desc">Total Bosses Defeated: 0/10</p>
-            </div>
         </div>
         <button class="btn-start" id="confirm-btn" disabled onclick="startGame()" style="font-size: 20px;">CONFIRM & ENTER</button>
     </div>
@@ -108,7 +93,7 @@
     <div id="pause-menu" class="overlay">
         <h2 style="color: #00ffcc; font-size: 50px;">PAUSED</h2>
         <button class="btn-go-try" onclick="togglePause()">RESUME (ESC/P)</button>
-        <button class="btn-go-exit" onclick="fastRestart()">RESTART</button>
+        <button class="btn-go-exit" onclick="location.reload()">RESTART</button>
     </div>
 
     <div id="upgrade-screen" class="overlay">
@@ -119,7 +104,7 @@
     <div id="game-over-screen" class="overlay">
         <h2>MISSION FAILED</h2>
         <p>Final Score: <span id="final-score-val">0</span></p>
-        <button class="btn-go-try" onclick="fastRestart()">TRY AGAIN</button>
+        <button class="btn-go-try" onclick="location.reload()">TRY AGAIN</button>
         <button class="btn-go-exit" onclick="backToMain()">EXIT TO<br>MENU</button>
     </div>
 
@@ -135,7 +120,8 @@
         <div class="bar-container">
             <div id="overload-bar"></div>
         </div>
-        <div id="difficulty-ui" style="font-size: 14px; color: #888;">
+        <div id="dash-ui">DASH READY (SHIFT)</div>
+        <div id="difficulty-ui" style="font-size: 14px; color: #888; margin-top: 5px;">
             System Intensity: <span id="intensity-val">100</span>% <br>
             Defeated Bosses: <span id="boss-count">0</span>
         </div>
@@ -150,78 +136,8 @@
 
 <script>
 /**
- * ACCOUNT SYSTEM & PERSISTENCE
- */
-let currentUser = sessionStorage.getItem('neon_user') || null;
-
-window.onload = () => {
-    if (currentUser) {
-        let accounts = JSON.parse(localStorage.getItem('neon_accounts')) || {};
-        if (accounts[currentUser]) {
-            loginSuccess(currentUser, accounts[currentUser]);
-        }
-    }
-};
-
-function handleAuth(type) {
-    const userInp = document.getElementById('username').value.trim();
-    const passInp = document.getElementById('password').value.trim();
-    const msg = document.getElementById('auth-msg');
-
-    if (!userInp || !passInp) {
-        msg.style.color = "#ff4444";
-        msg.innerText = "Please fill all fields.";
-        return;
-    }
-
-    let accounts = JSON.parse(localStorage.getItem('neon_accounts')) || {};
-
-    if (type === 'register') {
-        if (accounts[userInp]) {
-            msg.style.color = "#ff4444";
-            msg.innerText = "User already exists!";
-        } else {
-            accounts[userInp] = { password: passInp, highScore: 0, totalBosses: 0 };
-            localStorage.setItem('neon_accounts', JSON.stringify(accounts));
-            msg.style.color = "#00ffcc";
-            msg.innerText = "Success! Now Login.";
-        }
-    } else if (type === 'login') {
-        if (accounts[userInp] && accounts[userInp].password === passInp) {
-            loginSuccess(userInp, accounts[userInp]);
-        } else {
-            msg.style.color = "#ff4444";
-            msg.innerText = "Wrong name or password.";
-        }
-    }
-}
-
-function loginSuccess(username, data) {
-    currentUser = username;
-    sessionStorage.setItem('neon_user', username);
-    highScore = data.highScore || 0;
-    totalBossesDefeated = data.totalBosses || 0;
-    
-    document.getElementById('high-score').innerText = highScore;
-    document.getElementById('login-section').style.display = 'none';
-    document.getElementById('enter-btn').style.display = 'block';
-    const msg = document.getElementById('auth-msg');
-    msg.style.color = "#00ffcc";
-    msg.innerText = "Logged in as " + username;
-}
-
-function syncAccountData() {
-    if (!currentUser) return;
-    let accounts = JSON.parse(localStorage.getItem('neon_accounts')) || {};
-    if (accounts[currentUser]) {
-        accounts[currentUser].highScore = Math.max(accounts[currentUser].highScore, highScore);
-        accounts[currentUser].totalBosses = totalBossesDefeated;
-        localStorage.setItem('neon_accounts', JSON.stringify(accounts));
-    }
-}
-
-/**
  * CORE CONSTANTS AND STATE
+ * --------------------------------------------------------------------------
  */
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -229,19 +145,38 @@ let score=0, isGameOver=false, isPaused=false, gameStarted=false, energy=0, isOv
 let bullets=[], enemies=[], collectibles=[], bossBullets=[]; 
 const keys={};
 let damageFlash = 0; 
+
 let gameTick = 0;
 let spawnTimer = 0;
 let defeatedBossCount = 0;
 let intensityMultiplier = 1.0; 
-let highScore = 0;
-let totalBossesDefeated = 0;
+
+// New State for Improvements
+let highScore = localStorage.getItem('neon_high_score') || 0;
 let shakeAmount = 0;
+document.getElementById('high-score').innerText = highScore;
+
+// --- 特效與衝刺狀態 ---
+let particles = [];
+let bgParticles = [];
+let dashCooldown = 0;
+let isDashing = false;
+let dashTimer = 0;
+
+// --- 無人機 (Drone) 狀態 ---
+let drone = {
+    active: false, // 初始改為 false，選到卡片後才開啟
+    angle: 0,
+    radius: 65,
+    shootTimer: 0,
+    shootInterval: 50,
+    color: '#00ffcc'
+};
 
 const heroes = {
     knight: { speed: 5, maxHp: 100, chargeSpeed: 1.0, color: '#00ffcc', defense: 1, damageMult: 1 },
     scout: { speed: 7.5, maxHp: 50, chargeSpeed: 1.8, color: '#ffff00', defense: 1.2, damageMult: 1 },
-    fortress: { speed: 3.5, maxHp: 200, chargeSpeed: 0.6, color: '#0088ff', defense: 0.6, damageMult: 2 },
-    void: { speed: 6.0, maxHp: 80, chargeSpeed: 1.4, color: '#ff00ff', defense: 0.8, damageMult: 1.5, isHidden: true }
+    fortress: { speed: 3.5, maxHp: 200, chargeSpeed: 0.6, color: '#0088ff', defense: 0.6, damageMult: 2 }
 };
 
 const bossDatabase = [
@@ -253,62 +188,46 @@ const bossDatabase = [
 
 let player = { x:0, y:0, size:20, angle:0, hp: 100, maxHp: 100, type: 'knight', multiShot: 1 };
 
-const upgradePool = [
-    { title: "Multi-Shot", desc: "+1 Bullet", effect: () => player.multiShot++ },
-    { title: "Speed+", desc: "15% Speed", effect: () => { heroes[player.type].speed *= 1.15; } },
-    { title: "Charge+", desc: "25% Charge", effect: () => { heroes[player.type].chargeSpeed *= 1.25; } },
-    { title: "Repair", desc: "Heal 50% HP", effect: () => player.hp = Math.min(player.hp + player.maxHp*0.5, player.maxHp) }
+// --- 升級池 (含上限設定與機率權重) ---
+let upgradePool = [
+    { 
+        id: "multi_shot", title: "Multi-Shot", desc: "+1 Bullet", rarity: 1.0,
+        effect: () => player.multiShot++, 
+        isAvailable: () => player.multiShot < 5 // 上限 5
+    },
+    { 
+        id: "speed_plus", title: "Speed+", desc: "15% Speed", rarity: 1.0,
+        effect: () => heroes[player.type].speed *= 1.15, 
+        isAvailable: () => heroes[player.type].speed < 15 // 上限 15
+    },
+    { 
+        id: "charge_plus", title: "Charge+", desc: "25% Charge", rarity: 1.0,
+        effect: () => heroes[player.type].chargeSpeed *= 1.25, 
+        isAvailable: () => heroes[player.type].chargeSpeed < 3.0 // 上限 3倍
+    },
+    { 
+        id: "repair", title: "Repair", desc: "Heal 50% HP", rarity: 1.0,
+        effect: () => player.hp = Math.min(player.hp + player.maxHp*0.5, player.maxHp), 
+        isAvailable: () => true 
+    },
+    { 
+        id: "drone_unit", title: "DRONE UNIT", desc: "Autonomous Chain Striker", rarity: 0.1, // 低機率 (0.1)
+        effect: () => { 
+            drone.active = true; 
+            // 選過後從池中永久移除，所以此項不需在 isAvailable 檢查，點選時手動過濾即可
+        }, 
+        isAvailable: () => !drone.active // 只能選一次
+    }
 ];
 
 /**
  * UI AND MENU FLOW
+ * --------------------------------------------------------------------------
  */
-function toCharSelect() { 
-    document.getElementById('main-menu').style.display = 'none'; 
-    document.getElementById('char-select').style.display = 'flex'; 
-    
-    const voidCard = document.getElementById('card-void');
-    if (totalBossesDefeated >= 10) {
-        voidCard.classList.remove('locked');
-        document.getElementById('void-title').innerText = "🔮 Void Walker";
-        document.getElementById('void-desc').innerText = "Fast & High Damage";
-    } else {
-        document.getElementById('void-desc').innerText = `Total Bosses Defeated: ${totalBossesDefeated}/10`;
-    }
-}
-
-function selectChar(type) { 
-    if (type === 'void' && totalBossesDefeated < 10) return; 
-    player.type = type; 
-    document.querySelectorAll('.char-card').forEach(c => c.classList.remove('active')); 
-    document.getElementById('card-' + type).classList.add('active'); 
-    document.getElementById('confirm-btn').disabled = false; 
-}
-
-function startGame() { 
-    document.getElementById('char-select').style.display = 'none'; 
-    document.getElementById('game-ui').style.display = 'block'; 
-    gameStarted = true; 
-    resize(); 
-    resetGame(); 
-}
-
-function fastRestart() {
-    document.getElementById('game-over-screen').style.display = 'none';
-    document.getElementById('pause-menu').style.display = 'none';
-    document.getElementById('upgrade-screen').style.display = 'none';
-    document.getElementById('boss-ui').style.display = 'none';
-    isPaused = false;
-    isGameOver = false;
-    resetGame();
-}
-
-function backToMain() {
-    document.getElementById('game-over-screen').style.display = 'none';
-    document.getElementById('game-ui').style.display = 'none';
-    document.getElementById('main-menu').style.display = 'flex';
-    gameStarted = false;
-}
+function toCharSelect() { document.getElementById('main-menu').style.display = 'none'; document.getElementById('char-select').style.display = 'flex'; }
+function selectChar(type) { player.type = type; document.querySelectorAll('.char-card').forEach(c => c.classList.remove('active')); document.getElementById('card-' + type).classList.add('active'); document.getElementById('confirm-btn').disabled = false; }
+function startGame() { document.getElementById('char-select').style.display = 'none'; document.getElementById('game-ui').style.display = 'block'; gameStarted = true; initBGParticles(); resize(); resetGame(); }
+function backToMain() { location.reload(); }
 
 function resetGame() { 
     const d = heroes[player.type]; 
@@ -318,7 +237,9 @@ function resetGame() {
     score=0; energy=0; lastUpgradeThresh=0; lastBossThresh=0; gameTick=0;
     defeatedBossCount = 0; intensityMultiplier = 1.0;
     bullets=[]; enemies=[]; collectibles=[]; boss=null; bossBullets=[];
-    isOverloaded = false; isCharging = false; chargeTime = 0; overloadTimer = 0;
+    particles=[]; dashCooldown=0; isDashing=false;
+    drone.active = false; // 重置無人機
+    isPaused = false; isGameOver = false;
     updateUI(); 
 }
 
@@ -332,12 +253,23 @@ function updateUI() {
     document.getElementById('intensity-val').innerText = Math.floor(baseIntensity * intensityMultiplier);
     document.getElementById('boss-count').innerText = defeatedBossCount;
     document.getElementById('high-score').innerText = highScore;
+
+    // Dash UI 狀態
+    const dashUI = document.getElementById('dash-ui');
+    if(dashCooldown > 0) {
+        dashUI.innerText = `DASH RECHARGING...`;
+        dashUI.style.color = "#ff4444";
+    } else {
+        dashUI.innerText = `DASH READY (SHIFT)`;
+        dashUI.style.color = "#00ffcc";
+    }
 }
 
 function triggerDamageFeedback(amt) {
+    if(isDashing) return; // 衝刺時無敵
     player.hp -= amt;
     damageFlash = 10;
-    shakeAmount = 10;
+    shakeAmount = 10; // Trigger Screen Shake
     const hpContainer = document.getElementById('hp-container');
     hpContainer.classList.add('shaking');
     setTimeout(() => hpContainer.classList.remove('shaking'), 200);
@@ -355,22 +287,78 @@ function showUpgradeScreen() {
     const screen = document.getElementById('upgrade-screen');
     const container = document.getElementById('card-options');
     container.innerHTML = ""; screen.style.display = "flex";
-    const shuffled = [...upgradePool].sort(() => 0.5 - Math.random());
-    shuffled.slice(0, 3).forEach(option => {
+
+    // --- 加權隨機選卡邏輯 ---
+    let availableOptions = upgradePool.filter(opt => opt.isAvailable());
+    let selectedCards = [];
+
+    // 抽三張卡
+    for(let i=0; i<3; i++) {
+        if(availableOptions.length === 0) break;
+        
+        let totalWeight = availableOptions.reduce((sum, opt) => sum + opt.rarity, 0);
+        let random = Math.random() * totalWeight;
+        let currentSum = 0;
+        
+        for(let j=0; j<availableOptions.length; j++) {
+            currentSum += availableOptions[j].rarity;
+            if(random <= currentSum) {
+                selectedCards.push(availableOptions[j]);
+                availableOptions.splice(j, 1); // 避免同一輪選到重複卡片
+                break;
+            }
+        }
+    }
+
+    selectedCards.forEach(option => {
         const div = document.createElement('div'); div.className = 'upgrade-card';
+        // 如果是無人機，給予特別顏色
+        if(option.id === "drone_unit") div.style.borderColor = "#00ffcc";
+        
         div.innerHTML = `<h3>${option.title}</h3><p>${option.desc}</p>`;
-        div.onclick = () => { option.effect(); screen.style.display = "none"; isPaused = false; updateUI(); };
+        div.onclick = () => { 
+            option.effect(); 
+            screen.style.display = "none"; 
+            isPaused = false; 
+            updateUI(); 
+        };
         container.appendChild(div);
     });
 }
 
+// --- 粒子系統邏輯 ---
+function createExplosion(x, y, color) {
+    for(let i=0; i<8; i++) {
+        particles.push({
+            x, y, 
+            vx: (Math.random()-0.5)*10, 
+            vy: (Math.random()-0.5)*10, 
+            life: 20, 
+            color: color
+        });
+    }
+}
+
+function initBGParticles() {
+    bgParticles = [];
+    for(let i=0; i<50; i++) {
+        bgParticles.push({
+            x: Math.random()*window.innerWidth,
+            y: Math.random()*window.innerHeight,
+            size: Math.random()*2 + 1,
+            speed: Math.random()*0.5 + 0.2
+        });
+    }
+}
+
 /**
- * BOSS LOGIC
+ * BOSS LOGIC AND SPAWNING
+ * --------------------------------------------------------------------------
  */
 function spawnBoss() { 
     const bData = bossDatabase[Math.floor(Math.random() * bossDatabase.length)];
     const difficultyMult = (1 + (score / 20000)) * intensityMultiplier;
-    shakeAmount = 20;
+    shakeAmount = 20; // Big shake when boss appears
 
     boss = { 
         x: canvas.width/2, y: -100, 
@@ -398,11 +386,18 @@ function drawGrid() {
 }
 
 /**
- * INPUTS
+ * PLAYER INPUTS
+ * --------------------------------------------------------------------------
  */
 window.addEventListener('keydown', e => { 
     keys[e.key.toLowerCase()] = true; 
     if(e.key === 'Escape' || e.key.toLowerCase() === 'p') togglePause(); 
+    // 新增：衝刺按鍵
+    if(e.key === 'Shift' && dashCooldown <= 0 && gameStarted && !isPaused) {
+        isDashing = true;
+        dashTimer = 10;
+        dashCooldown = 80;
+    }
 });
 window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 window.addEventListener('mousemove', e => player.angle = Math.atan2(e.clientY - player.y, e.clientX - player.x));
@@ -410,6 +405,10 @@ window.addEventListener('mousedown', e => { if(!gameStarted || isPaused) return;
 window.addEventListener('mouseup', e => { if(e.button===2 && isCharging) { if(chargeTime > 30 / heroes[player.type].chargeSpeed) releaseNeonRing(); isCharging=false; chargeTime=0; } });
 window.addEventListener('contextmenu', e => e.preventDefault());
 
+/**
+ * WEAPONS SYSTEM
+ * --------------------------------------------------------------------------
+ */
 function fireBullet() { 
     const dmg = heroes[player.type].damageMult || 1;
     for(let i=0; i<player.multiShot; i++) { 
@@ -422,6 +421,42 @@ function releaseNeonRing() {
     for(let a=0; a<Math.PI*2; a+=0.4) { bullets.push({x:player.x, y:player.y, vx:Math.cos(a)*8, vy:Math.sin(a)*8, type:'ring', damage: dmg}); }
 }
 
+// --- 無人機自動射擊邏輯 (連鎖彈射) ---
+function droneAutoShoot() {
+    if (!drone.active || (enemies.length === 0 && !boss)) return;
+
+    let target = null;
+    if (boss) {
+        target = boss;
+    } else {
+        target = enemies[0];
+        let minDist = Math.hypot(player.x - target.x, player.y - target.y);
+        for (let e of enemies) {
+            let d = Math.hypot(player.x - e.x, player.y - e.y);
+            if (d < minDist) {
+                minDist = d;
+                target = e;
+            }
+        }
+    }
+
+    if (target) {
+        let dx = player.x + Math.cos(drone.angle) * drone.radius;
+        let dy = player.y + Math.sin(drone.angle) * drone.radius;
+        let angleToTarget = Math.atan2(target.y - dy, target.x - dx);
+
+        bullets.push({
+            x: dx, y: dy,
+            vx: Math.cos(angleToTarget) * 12,
+            vy: Math.sin(angleToTarget) * 12,
+            type: 'chain',
+            chainsLeft: 5, 
+            damage: 0.7,
+            lastTarget: target
+        });
+    }
+}
+
 function handleEnemySpawning() {
     if(!gameStarted || isPaused || isGameOver || enemies.length > 80) return; 
     const spawnRate = Math.max(10, (60 - Math.floor(gameTick / 600) * 2) / intensityMultiplier); 
@@ -429,94 +464,204 @@ function handleEnemySpawning() {
     if(spawnTimer >= spawnRate) {
         const side = Math.floor(Math.random()*4); 
         let x = (side%2===0)? Math.random()*canvas.width : (side===1?-30:canvas.width+30), y = (side%2!==0)? Math.random()*canvas.height : (side===0?-30:canvas.height+30); 
-        enemies.push({x, y, speed: (1.5 + Math.random()) + (Math.min(3, gameTick / 3600)) * intensityMultiplier}); 
+        const speedBoost = (Math.min(3, gameTick / 3600)) * intensityMultiplier;
+        enemies.push({x, y, speed: (1.5 + Math.random()) + speedBoost, id: Math.random()}); 
         spawnTimer = 0;
     }
 }
 
+/**
+ * BOSS AI ENGINE
+ * --------------------------------------------------------------------------
+ */
 function updateBossAI() {
     if(!boss) return;
     let d = Math.hypot(player.x - boss.x, player.y - boss.y);
     if(d > 5) { boss.x += (player.x - boss.x)/d * boss.speed; boss.y += (player.y - boss.y)/d * boss.speed; }
+    
     boss.attackTimer1++;
     
-    if (boss.type === "titan" && boss.attackTimer1 > 240) {
-        for(let a=0; a<Math.PI*2; a+=Math.PI/8) bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(a + boss.rotation)*5, vy: Math.sin(a + boss.rotation)*5, radius: 6 });
-        boss.rotation += 0.5; boss.attackTimer1 = 0;
+    if (boss.type === "titan") {
+        if(boss.attackTimer1 > 240) {
+            for(let a=0; a<Math.PI*2; a+=Math.PI/8) {
+                bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(a + boss.rotation)*5, vy: Math.sin(a + boss.rotation)*5, radius: 6 });
+            }
+            boss.rotation += 0.5;
+            boss.attackTimer1 = 0;
+        }
     } 
-    else if (boss.type === "stalker" && boss.attackTimer1 > 200) {
-        let ta = Math.atan2(player.y - boss.y, player.x - boss.x);
-        for(let i=-1; i<=1; i++) bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(ta + i*0.35)*6.5, vy: Math.sin(ta + i*0.35)*6.5, radius: 6 });
-        boss.attackTimer1 = 0;
+    else if (boss.type === "stalker") {
+        if(boss.attackTimer1 > 200) {
+            let targetAngle = Math.atan2(player.y - boss.y, player.x - boss.x);
+            for(let i=-1; i<=1; i++) {
+                let angle = targetAngle + i * 0.35;
+                bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(angle)*6.5, vy: Math.sin(angle)*6.5, radius: 6 });
+            }
+            boss.attackTimer1 = 0;
+        }
     }
-    else if (boss.type === "crusher" && boss.attackTimer1 > 320) {
-        for(let a=0; a<Math.PI*2; a+=Math.PI/4) bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(a)*2.2, vy: Math.sin(a)*2.2, radius: 18, isHeavy: true });
-        boss.attackTimer1 = 0;
+    else if (boss.type === "crusher") {
+        if(boss.attackTimer1 > 320) {
+            for(let a=0; a<Math.PI*2; a+=Math.PI/4) {
+                bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(a)*2.2, vy: Math.sin(a)*2.2, radius: 18, isHeavy: true });
+            }
+            boss.attackTimer1 = 0;
+        }
     }
-    else if (boss.type === "hydra" && boss.attackTimer1 > 180) {
-        [0, Math.PI/2, Math.PI, Math.PI*1.5].forEach(angle => {
-            for(let i=0; i<3; i++) setTimeout(() => { if(boss) bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(angle)*8.5, vy: Math.sin(angle)*8.5, radius: 7 }); }, i * 140);
-        });
-        boss.attackTimer1 = 0;
+    else if (boss.type === "hydra") {
+        boss.attackTimer2++;
+        if(boss.attackTimer2 > 180) {
+            let directions = [0, Math.PI/2, Math.PI, Math.PI*1.5];
+            directions.forEach(angle => {
+                for(let i=0; i<3; i++) {
+                    setTimeout(() => {
+                        if(boss) bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(angle)*8.5, vy: Math.sin(angle)*8.5, radius: 7 });
+                    }, i * 140);
+                }
+            });
+            boss.attackTimer2 = 0;
+            boss.attackTimer1 = 0;
+        }
     }
 
-    if(d < boss.size/2 + 15) triggerDamageFeedback(1.2 * heroes[player.type].defense * intensityMultiplier);
+    if(d < boss.size/2 + 15) { triggerDamageFeedback(1.2 * heroes[player.type].defense * intensityMultiplier); }
     
     for(let j=bullets.length-1; j>=0; j--) {
-        if(Math.hypot(bullets[j].x - boss.x, bullets[j].y - boss.y) < boss.size/2 + 15) {
+        let bulletBossDist = Math.hypot(bullets[j].x - boss.x, bullets[j].y - boss.y);
+        if(bulletBossDist < boss.size/2 + 15) {
             boss.hp -= (bullets[j].damage || 1); 
+            createExplosion(bullets[j].x, bullets[j].y, "white"); 
+
             if(bullets[j].type!=='ring') bullets.splice(j, 1);
+            
             if(boss.hp <= 0) { 
                 score += 2500; defeatedBossCount++; intensityMultiplier += 0.1;
-                totalBossesDefeated++; syncAccountData();
-                shakeAmount = 15; boss = null; document.getElementById('boss-ui').style.display = 'none'; 
+                shakeAmount = 15; 
+                createExplosion(boss.x, boss.y, boss.color);
+                boss = null; document.getElementById('boss-ui').style.display = 'none'; 
                 for(let k=0; k<15; k++) collectibles.push({x: player.x+Math.random()*150-75, y: player.y+Math.random()*150-75});
                 updateUI(); break;
             }
         }
     }
-    if(boss) document.getElementById('boss-bar').style.width = (boss.hp / boss.maxHp * 100) + "%";
+    
+    if(boss) {
+        document.getElementById('boss-bar').style.width = (boss.hp / boss.maxHp * 100) + "%";
+    }
 }
 
+/**
+ * MAIN UPDATE LOOP
+ * --------------------------------------------------------------------------
+ */
 function update() {
     if(!gameStarted || isPaused || isGameOver) return; 
     const hero = heroes[player.type];
     gameTick++;
     if(damageFlash > 0) damageFlash--; 
     
-    if(keys['w']) player.y -= hero.speed; if(keys['s']) player.y += hero.speed; if(keys['a']) player.x -= hero.speed; if(keys['d']) player.x += hero.speed;
+    // --- 衝刺邏輯 ---
+    let currentSpeed = hero.speed;
+    if(isDashing) {
+        currentSpeed *= 3;
+        dashTimer--;
+        if(dashTimer <= 0) isDashing = false;
+        particles.push({x: player.x, y: player.y, vx:0, vy:0, life:10, color: hero.color, isTrail: true});
+    }
+    if(dashCooldown > 0) {
+        dashCooldown--;
+        if(dashCooldown === 0) updateUI();
+    }
+    
+    // --- 無人機運作 (僅在啟用時) ---
+    if (drone.active) {
+        drone.angle += 0.05;
+        drone.shootTimer++;
+        if (drone.shootTimer >= drone.shootInterval) {
+            droneAutoShoot();
+            drone.shootTimer = 0;
+        }
+    }
+    
+    // Player Movement
+    if(keys['w']) player.y -= currentSpeed; if(keys['s']) player.y += currentSpeed; if(keys['a']) player.x -= currentSpeed; if(keys['d']) player.x += currentSpeed;
     player.x = Math.max(20, Math.min(canvas.width - 20, player.x));
     player.y = Math.max(20, Math.min(canvas.height - 20, player.y));
     
+    // Skill Handling
     if(isCharging) chargeTime += hero.chargeSpeed;
     if(isOverloaded) { if(gameTick % 5 === 0) fireBullet(); overloadTimer--; if(overloadTimer <= 0) isOverloaded = false; updateUI(); } 
     
     handleEnemySpawning();
     updateBossAI();
 
+    // 粒子更新
+    for(let i=particles.length-1; i>=0; i--) {
+        particles[i].x += particles[i].vx; particles[i].y += particles[i].vy;
+        particles[i].life--;
+        if(particles[i].life <= 0) particles.splice(i, 1);
+    }
+    
+    bgParticles.forEach(p => {
+        p.y += p.speed;
+        if(p.y > canvas.height) p.y = 0;
+    });
+
+    // Projectile Updates
     for(let i=bossBullets.length-1; i>=0; i--) {
-        let b = bossBullets[i]; b.x += b.vx; b.y += b.vy;
-        if(Math.hypot(player.x - b.x, player.y - b.y) < 20 + (b.radius || 6)) {
-            triggerDamageFeedback(b.isHeavy ? 28 * hero.defense : 13 * hero.defense); bossBullets.splice(i, 1); continue;
+        let b = bossBullets[i];
+        b.x += b.vx; b.y += b.vy;
+        let collisionRadius = b.radius || 6;
+        if(Math.hypot(player.x - b.x, player.y - b.y) < 20 + collisionRadius) {
+            triggerDamageFeedback(b.isHeavy ? 28 * hero.defense : 13 * hero.defense);
+            if(!isDashing) bossBullets.splice(i, 1);
+            continue;
         }
         if(b.x<-150 || b.x>canvas.width+150 || b.y<-150 || b.y>canvas.height+150) bossBullets.splice(i, 1);
     }
 
+    // Enemy and Collision Loop
     for(let i=enemies.length-1; i>=0; i--) {
         let e = enemies[i], ed = Math.hypot(player.x-e.x, player.y-e.y); 
         if(ed > 1) { e.x += (player.x-e.x)/ed * e.speed; e.y += (player.y-e.y)/ed * e.speed; }
-        if(ed < 25) triggerDamageFeedback(0.8 * hero.defense);
+        if(ed < 25) { triggerDamageFeedback(0.8 * hero.defense); }
         for(let j=bullets.length-1; j>=0; j--) {
-            if(Math.hypot(bullets[j].x-e.x, bullets[j].y-e.y) < 25) {
+            let b = bullets[j];
+            if(Math.hypot(b.x-e.x, b.y-e.y) < 25) {
+                createExplosion(e.x, e.y, b.type === 'chain' ? drone.color : "#ff4444");
+                
+                if (b.type === 'chain' && b.chainsLeft > 0) {
+                    b.chainsLeft--;
+                    let nextTarget = null;
+                    let closestNext = 300;
+                    for (let nextE of enemies) {
+                        if (nextE.id === e.id) continue;
+                        let dist = Math.hypot(e.x - nextE.x, e.y - nextE.y);
+                        if (dist < closestNext) { closestNext = dist; nextTarget = nextE; }
+                    }
+                    if (nextTarget) {
+                        let nextAngle = Math.atan2(nextTarget.y - e.y, nextTarget.x - e.x);
+                        b.x = e.x; b.y = e.y;
+                        b.vx = Math.cos(nextAngle) * 15; b.vy = Math.sin(nextAngle) * 15;
+                    } else { bullets.splice(j, 1); }
+                } else {
+                    if(b.type !== 'ring') bullets.splice(j, 1);
+                }
+
                 if(Math.random() > 0.75) collectibles.push({x: e.x, y: e.y});
-                enemies.splice(i, 1); if(bullets[j].type !== 'ring') bullets.splice(j, 1);
+                enemies.splice(i, 1);
                 score += 100; updateUI();
                 if(score >= lastUpgradeThresh + 2000){ lastUpgradeThresh += 2000; showUpgradeScreen(); }
-                if(score > 0 && score % 7500 === 0 && !boss && score > lastBossThresh) { lastBossThresh = score; spawnBoss(); } break;
+                
+                if(score > 0 && score % 7500 === 0 && !boss && score > lastBossThresh) { 
+                    lastBossThresh = score; 
+                    spawnBoss(); 
+                } break;
             }
         }
     }
 
+    // Energy Drops
     for(let i=collectibles.length-1; i>=0; i--) { 
         if(Math.hypot(player.x - collectibles[i].x, player.y - collectibles[i].y) < 40) { 
             energy = Math.min(energy + 8, 100); 
@@ -525,40 +670,103 @@ function update() {
         } 
     }
     
+    // Player Bullets
     for(let i=bullets.length-1; i>=0; i--) { 
-        bullets[i].x += bullets[i].vx; bullets[i].y += bullets[i].vy; 
+        bullets[i].x += bullets[i].vx; 
+        bullets[i].y += bullets[i].vy; 
         if(bullets[i].x<-100||bullets[i].x>canvas.width+100||bullets[i].y<-100||bullets[i].y>canvas.height+100) bullets.splice(i, 1); 
     }
     
+    // Death Check
     if(player.hp <= 0) { 
         isGameOver = true; 
-        if(score > highScore) { highScore = score; syncAccountData(); }
+        if(score > highScore) { highScore = score; localStorage.setItem('neon_high_score', highScore); }
         document.getElementById('final-score-val').innerText = score; 
         document.getElementById('game-over-screen').style.display = 'flex'; 
     }
 }
 
+/**
+ * RENDERING ENGINE
+ * --------------------------------------------------------------------------
+ */
 function draw() {
     ctx.save(); 
     if (shakeAmount > 0) {
         ctx.translate((Math.random() - 0.5) * shakeAmount, (Math.random() - 0.5) * shakeAmount);
-        shakeAmount *= 0.9; if (shakeAmount < 0.5) shakeAmount = 0;
+        shakeAmount *= 0.9;
+        if (shakeAmount < 0.5) shakeAmount = 0;
     }
+
     ctx.fillStyle = '#050505'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = "rgba(0, 255, 204, 0.15)";
+    bgParticles.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill(); });
+
     if(gameStarted) {
         drawGrid();
         const hero = heroes[player.type];
+        
+        particles.forEach(p => {
+            ctx.globalAlpha = p.life / (p.isTrail ? 10 : 20);
+            ctx.fillStyle = p.color;
+            if(p.isTrail) { ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI*2); ctx.fill(); } 
+            else { ctx.fillRect(p.x, p.y, 4, 4); }
+        });
+        ctx.globalAlpha = 1.0;
+
+        // --- 繪製無人機夥伴 (僅在啟用時) ---
+        if (drone.active) {
+            let dx = player.x + Math.cos(drone.angle) * drone.radius;
+            let dy = player.y + Math.sin(drone.angle) * drone.radius;
+            
+            ctx.strokeStyle = drone.color; ctx.lineWidth = 1; ctx.globalAlpha = 0.3;
+            ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(dx, dy); ctx.stroke();
+            ctx.globalAlpha = 1.0;
+
+            ctx.fillStyle = drone.color; ctx.shadowBlur = 10; ctx.shadowColor = drone.color;
+            ctx.beginPath();
+            ctx.moveTo(dx, dy - 8); ctx.lineTo(dx + 8, dy); ctx.lineTo(dx, dy + 8); ctx.lineTo(dx - 8, dy);
+            ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+        }
+
         ctx.fillStyle = '#00ffcc'; collectibles.forEach(c => ctx.fillRect(c.x-4, c.y-4, 8, 8));
-        bullets.forEach(b => { ctx.fillStyle = b.type==='ring'?'#00ffcc':'#ffff00'; ctx.beginPath(); ctx.arc(b.x, b.y, (b.type==='ring'?6:4)*(b.damage>1?1.5:1), 0, Math.PI*2); ctx.fill(); });
-        bossBullets.forEach(b => { ctx.fillStyle = b.isHeavy ? '#ffcc00' : '#ff0000'; ctx.beginPath(); ctx.arc(b.x, b.y, b.radius||6, 0, Math.PI*2); ctx.fill(); });
+        bullets.forEach(b => { 
+            ctx.fillStyle = b.type==='ring'?'#00ffcc' : (b.type === 'chain' ? drone.color : '#ffff00'); 
+            ctx.beginPath(); 
+            ctx.arc(b.x, b.y, (b.type==='ring'?6:4) * (b.damage > 1 ? 1.5 : 1), 0, Math.PI*2); 
+            ctx.fill(); 
+            if (b.type === 'chain') { ctx.shadowBlur = 8; ctx.shadowColor = drone.color; ctx.fill(); ctx.shadowBlur = 0; }
+        });
+        
+        bossBullets.forEach(b => {
+            ctx.fillStyle = b.isHeavy ? '#ffcc00' : '#ff0000';
+            ctx.shadowBlur = b.isHeavy ? 20 : 10; ctx.shadowColor = ctx.fillStyle;
+            ctx.beginPath(); ctx.arc(b.x, b.y, b.radius || 6, 0, Math.PI*2); ctx.fill();
+            ctx.shadowBlur = 0;
+        });
+
         ctx.fillStyle = '#ff4444'; enemies.forEach(e => ctx.fillRect(e.x-10, e.y-10, 20, 20));
-        if(boss) { ctx.fillStyle = boss.color; ctx.fillRect(boss.x-boss.size/2, boss.y-boss.size/2, boss.size, boss.size); }
+        if(boss) { 
+            ctx.fillStyle = boss.color; ctx.shadowBlur = 25; ctx.shadowColor = boss.color; 
+            ctx.fillRect(boss.x-boss.size/2, boss.y-boss.size/2, boss.size, boss.size); 
+            ctx.shadowBlur = 0; 
+        }
+        
         ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(player.angle);
         ctx.fillStyle = (damageFlash > 0 && damageFlash % 2 === 0) ? '#ff0000' : (isOverloaded ? '#fff' : hero.color);
+        if(isDashing) ctx.globalAlpha = 0.6;
         ctx.beginPath(); ctx.moveTo(22,0); ctx.lineTo(-15,-15); ctx.lineTo(-10,0); ctx.lineTo(-15,15); ctx.fill(); ctx.restore();
+        ctx.globalAlpha = 1.0;
+        
         if(isCharging) {
-            ctx.beginPath(); ctx.arc(player.x, player.y, Math.min(chargeTime*2.5, 60), 0, Math.PI*2); ctx.lineWidth = 3;
-            ctx.strokeStyle = chargeTime > 30/hero.chargeSpeed ? '#fff' : hero.color; ctx.stroke();
+            ctx.beginPath();
+            let radius = Math.min(chargeTime * 2.5, 60);
+            ctx.arc(player.x, player.y, radius, 0, Math.PI * 2);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = chargeTime > 30 / hero.chargeSpeed ? '#fff' : hero.color;
+            ctx.shadowBlur = 15; ctx.shadowColor = hero.color;
+            ctx.stroke(); ctx.globalAlpha = 0.2; ctx.fillStyle = hero.color; ctx.fill();
+            ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
         }
     }
     ctx.restore(); 
