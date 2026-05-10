@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <link rel="icon" type="image/png" href="Neon-Survivor.png">
-    <meta property="og:title" content="Neon Survivor">
+    <meta property="og:title" content="Neon Survivor.io">
     <meta property="og:description" content="挑戰你的反應極限，在霓虹世界中生存下去！">
     <meta property="og:image" content="https://s11331136.github.io/Neon-Survivor_2.0/Neon-Survivor.png">
     
@@ -10,7 +10,7 @@
     
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neon Survivor</title>
+    <title>Neon Survivor.io</title>
     <style>
         /* 基礎全域設定 */
         body { margin: 0; overflow: hidden; background: #050505; font-family: 'Segoe UI', sans-serif; user-select: none; }
@@ -66,7 +66,7 @@
         #difficulty-ui { font-size: 14px; color: #888; margin-top: 25px; line-height: 1.6; }
         @keyframes shake { 0% { transform: translate(1px, 1px); } 20% { transform: translate(-1px, -2px); } 40% { transform: translate(-3px, 0px); } 60% { transform: translate(3px, 2px); } 80% { transform: translate(1px, -1px); } 100% { transform: translate(-1px, 2px); } }
         .shaking { animation: shake 0.15s infinite; border: 1px solid #ff0000 !important; }
-        #boss-ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); display: none; width: 50%; pointer-events: none; text-align: center; }
+        #boss-ui { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); display: none; width: 50%; pointer-events: none; text-align: center; transition: all 0.3s ease; }
         #boss-name { color: #ff0055; margin-bottom: 8px; font-weight: bold; font-size: 20px; letter-spacing: 3px; text-shadow: 0 0 10px #ff0055;}
         #boss-bar-box { width: 100%; height: 18px; background: rgba(0,0,0,0.7); border: 2px solid #ff0055; border-radius: 9px; overflow: hidden; box-shadow: 0 0 15px rgba(255, 0, 85, 0.3); }
         #boss-bar { width: 100%; height: 100%; background: linear-gradient(90deg, #ff0055, #ff4444); transition: width 0.1s; }
@@ -345,7 +345,6 @@ function showUpgradeScreen() {
     });
 }
 
-// ==================== 強力防卡死復活系統 ====================
 function watchAdToRevive() {
     const btn = document.getElementById('revive-btn');
     if(btn) { btn.disabled = true; btn.innerText = "LOADING AD..."; }
@@ -353,34 +352,27 @@ function watchAdToRevive() {
     let adHandled = false;
 
     const executeRevive = () => {
-        if(adHandled) return; // 避免重複執行
+        if(adHandled) return; 
         adHandled = true;
 
         player.hp = player.maxHp * 0.5; 
-        player.invincibleTimer = 120; // 2秒無敵
+        player.invincibleTimer = 120; 
         isGameOver = false; 
         isPaused = false;
         
         enemies = []; bossBullets = [];
-        if (boss) { boss.y = -200; boss.attackTimer1 = -120; }
+        if (boss) { boss.y = -200; boss.attackTimer1 = -120; boss.isEnraged = false; boss.color = bossDatabase.find(b=>b.type===boss.type).color; }
         
         document.getElementById('game-over-screen').style.display = 'none';
-        if(btn) btn.style.display = 'none'; // 每局只能復活一次
+        if(btn) btn.style.display = 'none'; 
         
         shakeAmount = 30;
         for(let i=0; i<60; i++) createExplosion(player.x, player.y, "#fff", 20, 40);
         updateUI();
     };
 
-    // 保底防護：如果 SDK 當機，3秒後強制復活
-    setTimeout(() => {
-        if(!adHandled) {
-            console.warn("CrazyGames 廣告無回應，觸發強制復活！");
-            executeRevive();
-        }
-    }, 3000);
+    setTimeout(() => { if(!adHandled) { console.warn("CrazyGames 廣告無回應，觸發強制復活！"); executeRevive(); } }, 3000);
 
-    // 呼叫廣告 SDK
     if (window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.ad) {
         try {
             window.CrazyGames.SDK.ad.requestAd('rewarded', {
@@ -388,12 +380,8 @@ function watchAdToRevive() {
                 adFinished: () => { executeRevive(); },
                 adError: () => { executeRevive(); }
             });
-        } catch (err) {
-            executeRevive();
-        }
-    } else {
-        executeRevive(); // 沒抓到 SDK 也直接復活
-    }
+        } catch (err) { executeRevive(); }
+    } else { executeRevive(); }
 }
 
 function createExplosion(x, y, color, count = 8, spread = 10) {
@@ -477,8 +465,19 @@ function handleEnemySpawning() {
         else if(side === 1) { x = canvas.width + 40; y = Math.random() * canvas.height; }
         else if(side === 2) { x = Math.random() * canvas.width; y = canvas.height + 40; }
         else { x = -40; y = Math.random() * canvas.height; }
+        
         const speedBoost = (Math.min(3.5, gameTick / 3600)) * intensityMultiplier;
-        enemies.push({ x, y, speed: (1.5 + Math.random()) + speedBoost, id: Math.random() }); spawnTimer = 0;
+        
+        let isElite = Math.random() < 0.1;
+        enemies.push({ 
+            x, y, 
+            speed: isElite ? (1.2 + speedBoost) : ((1.5 + Math.random()) + speedBoost), 
+            id: Math.random(),
+            isElite: isElite,
+            hp: isElite ? 2 : 1, 
+            shootTimer: 0
+        }); 
+        spawnTimer = 0;
     }
 }
 
@@ -486,27 +485,121 @@ function spawnBoss() {
     const bData = bossDatabase[Math.floor(Math.random() * bossDatabase.length)];
     const difficultyMult = (1 + (score / 20000)) * intensityMultiplier;
     shakeAmount = 25; 
-    boss = { x: canvas.width/2, y: -100, name: bData.name, size: bData.size, hp: bData.hp * difficultyMult, maxHp: bData.hp * difficultyMult, speed: bData.speed * (0.8 + intensityMultiplier * 0.2), color: bData.color, type: bData.type, attackTimer1: 0, attackTimer2: 0, rotation: 0 }; 
-    document.getElementById('boss-name').innerText = `BOSS: ${boss.name}`; document.getElementById('boss-name').style.color = boss.color; document.getElementById('boss-name').style.textShadow = `0 0 15px ${boss.color}`; document.getElementById('boss-bar-box').style.borderColor = boss.color; document.getElementById('boss-ui').style.display = 'block'; 
+    
+    boss = { 
+        x: canvas.width/2, y: -100, 
+        name: bData.name, size: bData.size, 
+        hp: bData.hp * difficultyMult, maxHp: bData.hp * difficultyMult, 
+        speed: bData.speed * (0.8 + intensityMultiplier * 0.2), 
+        color: bData.color, type: bData.type, 
+        attackTimer1: 0, attackTimer2: 0, rotation: 0,
+        
+        isEnraged: false, enrageRotation: 0, enrageDashTimer: 0, enrageSpeedMult: 1.0, enrageSpiralTimer: 0
+    }; 
+    
+    document.getElementById('boss-name').innerText = `BOSS: ${boss.name}`; 
+    document.getElementById('boss-name').style.color = boss.color; 
+    document.getElementById('boss-name').style.textShadow = `0 0 15px ${boss.color}`; 
+    document.getElementById('boss-bar-box').style.borderColor = boss.color; 
+    document.getElementById('boss-ui').style.display = 'block'; 
 }
 
 function updateBossAI() {
     if(!boss) return;
     let d = Math.hypot(player.x - boss.x, player.y - boss.y);
-    if(d > 5) { boss.x += (player.x - boss.x)/d * boss.speed; boss.y += (player.y - boss.y)/d * boss.speed; }
-    boss.attackTimer1++;
-    if (boss.type === "titan") { if(boss.attackTimer1 > 220) { for(let a=0; a<Math.PI*2; a+=Math.PI/8) { bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(a + boss.rotation)*5.5, vy: Math.sin(a + boss.rotation)*5.5, radius: 7 }); } boss.rotation += 0.5; boss.attackTimer1 = 0; } } 
-    else if (boss.type === "stalker") { if(boss.attackTimer1 > 180) { let targetAngle = Math.atan2(player.y - boss.y, player.x - boss.x); for(let i=-1; i<=1; i++) { let angle = targetAngle + i * 0.35; bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(angle)*7.5, vy: Math.sin(angle)*7.5, radius: 6 }); } boss.attackTimer1 = 0; } }
-    else if (boss.type === "crusher") { if(boss.attackTimer1 > 300) { for(let a=0; a<Math.PI*2; a+=Math.PI/4) { bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(a)*2.5, vy: Math.sin(a)*2.5, radius: 18, isHeavy: true }); } boss.attackTimer1 = 0; } }
-    else if (boss.type === "hydra") { boss.attackTimer2++; if(boss.attackTimer2 > 160) { let directions = [0, Math.PI/2, Math.PI, Math.PI*1.5]; directions.forEach(angle => { for(let i=0; i<3; i++) { setTimeout(() => { if(boss) bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(angle)*9.5, vy: Math.sin(angle)*9.5, radius: 7 }); }, i * 130); } }); boss.attackTimer2 = 0; boss.attackTimer1 = 0; } }
+    
+    if (!boss.isEnraged && boss.hp <= boss.maxHp * 0.3) {
+        boss.isEnraged = true;
+        boss.color = '#ff0000'; 
+        document.getElementById('boss-name').style.color = '#ff0000';
+        document.getElementById('boss-name').style.textShadow = '0 0 20px #ff0000';
+        document.getElementById('boss-name').innerText = `BOSS: ${boss.name} [ENRAGED]`;
+        document.getElementById('boss-bar-box').style.borderColor = '#ff0000';
+        shakeAmount = 35; 
+        createExplosion(boss.x, boss.y, '#ff0000', 30, 20); 
+        boss.enrageRotation = 0;
+        boss.enrageDashTimer = 0;
+        boss.enrageSpeedMult = 1.0;
+        boss.enrageSpiralTimer = 0;
+    }
+
+    if (boss.isEnraged) {
+        boss.enrageDashTimer++;
+        if (boss.enrageDashTimer > 120) { 
+            boss.enrageSpeedMult = 5.0; 
+            boss.enrageDashTimer = 0;
+            shakeAmount = 10;
+        }
+        
+        if (boss.enrageSpeedMult > 1.0) boss.enrageSpeedMult *= 0.92; 
+        else boss.enrageSpeedMult = 1.0;
+
+        if(d > 5) { 
+            boss.x += (player.x - boss.x)/d * (boss.speed * boss.enrageSpeedMult); 
+            boss.y += (player.y - boss.y)/d * (boss.speed * boss.enrageSpeedMult); 
+        }
+
+        if (boss.enrageSpiralTimer === undefined) boss.enrageSpiralTimer = 0;
+        boss.enrageSpiralTimer++;
+        
+        if (boss.enrageSpiralTimer <= 120) { 
+            if (boss.enrageSpiralTimer % 5 === 0) { 
+                for(let i=0; i<4; i++) { 
+                    let angle = boss.enrageRotation + (Math.PI / 2) * i;
+                    bossBullets.push({ 
+                        x: boss.x, y: boss.y, 
+                        vx: Math.cos(angle)*7, vy: Math.sin(angle)*7, 
+                        radius: 8, color: '#ff0000', isHeavy: true 
+                    });
+                }
+                boss.enrageRotation += 0.25; 
+            }
+        } else if (boss.enrageSpiralTimer >= 420) { 
+            boss.enrageSpiralTimer = 0;
+        }
+        
+    } else {
+        if(d > 5) { boss.x += (player.x - boss.x)/d * boss.speed; boss.y += (player.y - boss.y)/d * boss.speed; }
+        boss.attackTimer1++;
+        if (boss.type === "titan") { if(boss.attackTimer1 > 220) { for(let a=0; a<Math.PI*2; a+=Math.PI/8) { bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(a + boss.rotation)*5.5, vy: Math.sin(a + boss.rotation)*5.5, radius: 7, color: boss.color }); } boss.rotation += 0.5; boss.attackTimer1 = 0; } } 
+        else if (boss.type === "stalker") { if(boss.attackTimer1 > 180) { let targetAngle = Math.atan2(player.y - boss.y, player.x - boss.x); for(let i=-1; i<=1; i++) { let angle = targetAngle + i * 0.35; bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(angle)*7.5, vy: Math.sin(angle)*7.5, radius: 6, color: boss.color }); } boss.attackTimer1 = 0; } }
+        else if (boss.type === "crusher") { if(boss.attackTimer1 > 300) { for(let a=0; a<Math.PI*2; a+=Math.PI/4) { bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(a)*2.5, vy: Math.sin(a)*2.5, radius: 18, isHeavy: true, color: boss.color }); } boss.attackTimer1 = 0; } }
+        else if (boss.type === "hydra") { boss.attackTimer2++; if(boss.attackTimer2 > 160) { let directions = [0, Math.PI/2, Math.PI, Math.PI*1.5]; directions.forEach(angle => { for(let i=0; i<3; i++) { setTimeout(() => { if(boss) bossBullets.push({ x: boss.x, y: boss.y, vx: Math.cos(angle)*9.5, vy: Math.sin(angle)*9.5, radius: 7, color: boss.color }); }, i * 130); } }); boss.attackTimer2 = 0; boss.attackTimer1 = 0; } }
+    }
+
     if(d < boss.size/2 + 15) { triggerDamageFeedback(1.5 * heroes[player.type].defense * intensityMultiplier); }
+    
     for(let j=bullets.length-1; j>=0; j--) {
         if(Math.hypot(bullets[j].x - boss.x, bullets[j].y - boss.y) < boss.size/2 + 15) {
-            boss.hp -= (bullets[j].damage || 1); createExplosion(bullets[j].x, bullets[j].y, "white", 4, 5); if(bullets[j].type !== 'ring') bullets.splice(j, 1);
-            if(boss.hp <= 0) { score += 2500; defeatedBossCount++; intensityMultiplier += 0.15; shakeAmount = 25; createExplosion(boss.x, boss.y, boss.color, 40, 30); boss = null; document.getElementById('boss-ui').style.display = 'none'; for(let k=0; k<25; k++) collectibles.push({x: player.x+Math.random()*200-100, y: player.y+Math.random()*200-100}); updateUI(); break; }
+            boss.hp -= (bullets[j].damage || 1); 
+            createExplosion(bullets[j].x, bullets[j].y, "white", 4, 5); 
+            if(bullets[j].type !== 'ring') bullets.splice(j, 1);
+            
+            if(boss.hp <= 0) { 
+                score += 2500; defeatedBossCount++; intensityMultiplier += 0.15; 
+                shakeAmount = 25; 
+                createExplosion(boss.x, boss.y, boss.color, 40, 30); 
+                boss = null; 
+                document.getElementById('boss-ui').style.display = 'none'; 
+                for(let k=0; k<25; k++) collectibles.push({x: player.x+Math.random()*200-100, y: player.y+Math.random()*200-100}); 
+                updateUI(); 
+                break; 
+            }
         }
     }
-    if (boss) { blades.forEach(b => { let rot = (gameTick * 0.05) + b.angleOffset; let bx = player.x + Math.cos(rot) * 90; let by = player.y + Math.sin(rot) * 90; if(Math.hypot(bx - boss.x, by - boss.y) < boss.size/2 + 35) { boss.hp -= (0.5 * player.atkBonus); createExplosion(bx, by, heroes[player.type].color, 1, 3); } }); }
+    
+    if (boss) { 
+        blades.forEach(b => { 
+            let rot = (gameTick * 0.05) + b.angleOffset; 
+            let bx = player.x + Math.cos(rot) * 90; 
+            let by = player.y + Math.sin(rot) * 90; 
+            if(Math.hypot(bx - boss.x, by - boss.y) < boss.size/2 + 35) { 
+                boss.hp -= (0.5 * player.atkBonus); 
+                createExplosion(bx, by, heroes[player.type].color, 1, 3); 
+            } 
+        }); 
+    }
+    
     if(boss) document.getElementById('boss-bar').style.width = (boss.hp / boss.maxHp * 100) + "%";
 }
 
@@ -553,21 +646,66 @@ function update() {
         let e = enemies[i], ed = Math.hypot(player.x - e.x, player.y - e.y); 
         if(ed > 1) { e.x += (player.x - e.x) / ed * e.speed; e.y += (player.y - e.y) / ed * e.speed; }
         if(ed < 25) { triggerDamageFeedback(1.0 * hero.defense); }
+        
+        if (e.isElite) {
+            e.shootTimer++;
+            if (e.shootTimer >= 180) {
+                let angle = Math.atan2(player.y - e.y, player.x - e.x);
+                bossBullets.push({ x: e.x, y: e.y, vx: Math.cos(angle)*6, vy: Math.sin(angle)*6, radius: 7, color: '#aa00ff', isHeavy: false });
+                e.shootTimer = 0;
+            }
+        }
+
         let enemyKilled = false;
-        for (let b of blades) { let rot = (gameTick * 0.05) + b.angleOffset; let bx = player.x + Math.cos(rot) * 90; let by = player.y + Math.sin(rot) * 90; if (Math.hypot(bx - e.x, by - e.y) < 45) { enemyKilled = true; createExplosion(e.x, e.y, heroes[player.type].color); break; } }
+        // 光刀判定 (修正：擴大判定半徑至 60，並將每幀傷害從 0.1 提升至 1.5，確保觸碰外圍即刻殺傷)
+        for (let b of blades) { 
+            let rot = (gameTick * 0.05) + b.angleOffset; 
+            let bx = player.x + Math.cos(rot) * 90; 
+            let by = player.y + Math.sin(rot) * 90; 
+            if (Math.hypot(bx - e.x, by - e.y) < 60) { 
+                e.hp -= (1.5 * player.atkBonus); 
+                if(e.hp <= 0) { 
+                    enemyKilled = true; 
+                    createExplosion(e.x, e.y, heroes[player.type].color); 
+                } else {
+                    e.x += (e.x - bx) * 0.15;
+                    e.y += (e.y - by) * 0.15;
+                }
+                break; 
+            } 
+        }
+        
         if (!enemyKilled) {
             for(let j = bullets.length - 1; j >= 0; j--) {
                 let b = bullets[j];
                 if(Math.hypot(b.x - e.x, b.y - e.y) < 25) {
-                    enemyKilled = true; createExplosion(e.x, e.y, b.type === 'chain' ? drone.color : "#ff4444");
-                    if (b.type === 'chain' && b.chainsLeft > 0) { b.chainsLeft--; let nextTarget = null; let closestNext = 350; for (let nextE of enemies) { if (nextE.id === e.id) continue; let dist = Math.hypot(e.x - nextE.x, e.y - nextE.y); if (dist < closestNext) { closestNext = dist; nextTarget = nextE; } } if (nextTarget) { let nextAngle = Math.atan2(nextTarget.y - e.y, nextTarget.x - e.x); b.x = e.x; b.y = e.y; b.vx = Math.cos(nextAngle) * 16; b.vy = Math.sin(nextAngle) * 16; } else { bullets.splice(j, 1); } } else { if(b.type !== 'ring') bullets.splice(j, 1); }
+                    e.hp -= (b.damage || 1); 
+                    createExplosion(e.x, e.y, b.type === 'chain' ? drone.color : "white", 3, 3);
+                    
+                    if(e.hp <= 0) {
+                        enemyKilled = true;
+                        createExplosion(e.x, e.y, b.type === 'chain' ? drone.color : "#ff4444");
+                    }
+
+                    if (b.type === 'chain' && b.chainsLeft > 0) { 
+                        b.chainsLeft--; 
+                        let nextTarget = null; let closestNext = 350; 
+                        for (let nextE of enemies) { if (nextE.id === e.id) continue; let dist = Math.hypot(e.x - nextE.x, e.y - nextE.y); if (dist < closestNext) { closestNext = dist; nextTarget = nextE; } } 
+                        if (nextTarget) { let nextAngle = Math.atan2(nextTarget.y - e.y, nextTarget.x - e.x); b.x = e.x; b.y = e.y; b.vx = Math.cos(nextAngle) * 16; b.vy = Math.sin(nextAngle) * 16; } 
+                        else { bullets.splice(j, 1); } 
+                    } else { 
+                        if(b.type !== 'ring') bullets.splice(j, 1); 
+                    }
                     break;
                 }
             }
         }
+        
         if (enemyKilled) {
             if(Math.random() > 0.70) collectibles.push({x: e.x, y: e.y});
-            enemies.splice(i, 1); score += 100; document.getElementById('score').innerText = Math.floor(score); 
+            enemies.splice(i, 1);
+            score += e.isElite ? 200 : 100; 
+            document.getElementById('score').innerText = Math.floor(score);
             if(score >= lastUpgradeThresh + 2000) { lastUpgradeThresh += 2000; showUpgradeScreen(); }
             if(score >= lastBossThresh + 7500 && !boss) { lastBossThresh += 7500; spawnBoss(); }
         }
@@ -598,9 +736,30 @@ function draw() {
         if (drone.active) { let dx = player.x + Math.cos(drone.angle) * drone.radius; let dy = player.y + Math.sin(drone.angle) * drone.radius; ctx.strokeStyle = drone.color; ctx.lineWidth = 1; ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(dx, dy); ctx.stroke(); ctx.globalAlpha = 1.0; ctx.fillStyle = drone.color; ctx.shadowBlur = 15; ctx.shadowColor = drone.color; ctx.beginPath(); ctx.moveTo(dx, dy - 10); ctx.lineTo(dx + 10, dy); ctx.lineTo(dx, dy + 10); ctx.lineTo(dx - 10, dy); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0; }
         ctx.fillStyle = '#00ffcc'; collectibles.forEach(c => ctx.fillRect(c.x-5, c.y-5, 10, 10));
         bullets.forEach(b => { ctx.fillStyle = b.type === 'ring' ? '#00ffcc' : (b.type === 'chain' ? drone.color : '#ffff00'); ctx.beginPath(); ctx.arc(b.x, b.y, (b.type === 'ring' ? 7 : 5) * (b.damage > 1.5 ? 1.3 : 1), 0, Math.PI*2); ctx.fill(); if (b.type === 'chain') { ctx.shadowBlur = 10; ctx.shadowColor = drone.color; ctx.fill(); ctx.shadowBlur = 0; } });
-        bossBullets.forEach(b => { ctx.fillStyle = b.isHeavy ? '#ffcc00' : '#ff0000'; ctx.shadowBlur = b.isHeavy ? 25 : 12; ctx.shadowColor = ctx.fillStyle; ctx.beginPath(); ctx.arc(b.x, b.y, b.radius || 6, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0; });
-        ctx.fillStyle = '#ff4444'; enemies.forEach(e => ctx.fillRect(e.x-12, e.y-12, 24, 24));
-        if(boss) { ctx.fillStyle = boss.color; ctx.shadowBlur = 30; ctx.shadowColor = boss.color; ctx.fillRect(boss.x - boss.size/2, boss.y - boss.size/2, boss.size, boss.size); ctx.shadowBlur = 0; }
+        bossBullets.forEach(b => { ctx.fillStyle = b.color || '#fff'; ctx.shadowBlur = b.isHeavy ? 25 : 12; ctx.shadowColor = ctx.fillStyle; ctx.beginPath(); ctx.arc(b.x, b.y, b.radius || 6, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0; });
+        
+        enemies.forEach(e => {
+            if(e.isElite) {
+                ctx.fillStyle = '#aa00ff'; 
+                ctx.shadowBlur = 15; ctx.shadowColor = '#aa00ff'; 
+                ctx.fillRect(e.x - 16, e.y - 16, 32, 32); 
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#111'; 
+                ctx.fillRect(e.x - 6, e.y - 6, 12, 12);
+            } else {
+                ctx.fillStyle = '#ff4444'; 
+                ctx.fillRect(e.x - 12, e.y - 12, 24, 24); 
+            }
+        });
+
+        if(boss) { 
+            let drawSize = boss.isEnraged ? boss.size * 1.1 : boss.size;
+            ctx.fillStyle = boss.color; 
+            ctx.shadowBlur = boss.isEnraged ? 45 : 30; 
+            ctx.shadowColor = boss.color; 
+            ctx.fillRect(boss.x - drawSize/2, boss.y - drawSize/2, drawSize, drawSize); 
+            ctx.shadowBlur = 0; 
+        }
         
         ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(player.angle);
         if(player.invincibleTimer > 0) ctx.globalAlpha = (gameTick % 10 < 5) ? 0.3 : 0.8; 
