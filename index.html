@@ -328,8 +328,8 @@ function drawBlackHoles() {
         ctx.arc(bh.x, bh.y, 25, 0, Math.PI * 2);
         ctx.fill();
         
-        ctx.strokeStyle = '#00ffcc';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(0, 255, 204, 0.2)'; 
+        ctx.lineWidth = 1; 
         ctx.beginPath();
         for(let j=0; j<3; j++) {
             let r = 30 + j * 15;
