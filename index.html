@@ -59,7 +59,8 @@
         #hp-bar { position: absolute; top: 0; left: 0; height: 100%; background: #ff4444; width: 100%; z-index: 2; transition: width 0.1s ease-out; }
         #overload-bar { width: 0%; height: 100%; background: #00ffcc; box-shadow: 0 0 10px #00ffcc; transition: width 0.2s; }
         .skill-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
-        .skill-label { font-size: 14px; font-weight: bold; width: 50px; letter-spacing: 1px;}
+        /* 修改：把寬度稍微放寬，以便容納 B.HOLE 標籤 */
+        .skill-label { font-size: 14px; font-weight: bold; width: 60px; letter-spacing: 1px;}
         .skill-bar-bg { width: 150px; height: 8px; background: #222; border-radius: 4px; overflow: hidden; }
         .skill-bar-fill { height: 100%; width: 100%; transition: none; } 
         #blade-status-ui { margin-top: 15px; font-size: 14px; font-weight: bold; letter-spacing: 1px; color: #00ccff; transition: color 0.3s;}
@@ -70,6 +71,15 @@
         #boss-name { color: #ff0055; margin-bottom: 8px; font-weight: bold; font-size: 20px; letter-spacing: 3px; text-shadow: 0 0 10px #ff0055;}
         #boss-bar-box { width: 100%; height: 18px; background: rgba(0,0,0,0.7); border: 2px solid #ff0055; border-radius: 9px; overflow: hidden; box-shadow: 0 0 15px rgba(255, 0, 85, 0.3); }
         #boss-bar { width: 100%; height: 100%; background: linear-gradient(90deg, #ff0055, #ff4444); transition: width 0.1s; }
+
+        #combo-ui {
+            position: absolute; top: 120px; left: 290px;
+            color: #fff; pointer-events: none; display: none; flex-direction: column; align-items: flex-start; z-index: 55;
+        }
+        .combo-count { font-size: 48px; font-weight: 900; color: #ff0055; text-shadow: 0 0 10px #ff0055, 0 0 20px #ff0055; margin: 0; line-height: 1; font-style: italic; transition: transform 0.1s; }
+        .combo-text { font-size: 14px; letter-spacing: 3px; color: #ff0055; font-weight: bold; margin: -5px 0 0 5px; }
+        #combo-timer-container { width: 120px; height: 6px; background: rgba(255, 255, 255, 0.1); margin-top: 8px; border-radius: 3px; overflow: hidden; border: 1px solid rgba(255, 0, 85, 0.3); }
+        #combo-timer-bar { height: 100%; background: linear-gradient(90deg, #ff0055, #ff5588); width: 100%; box-shadow: 0 0 10px #ff0055; }
     </style>
 </head>
 <body>
@@ -78,7 +88,8 @@
         <h1>NEON SURVIVOR.IO</h1>
         <p class="controls-hint">
             WASD: Move | Shift: Dash | Left Click: Shoot <br>
-            Right Click (Hold): Neon Blade | E: Neon Ring
+            Right Click (Hold): Neon Blade | E: Neon Ring <br>
+            <span style="color: #9900ff; font-weight: bold;">Q Key: Singularity Grenade (Black Hole)</span>
         </p>
         <button class="btn-start" onclick="toCharSelect()">ENTER SYSTEM</button>
     </div>
@@ -130,7 +141,7 @@
             <div id="hp-ghost"></div>
             <div id="hp-bar"></div>
         </div>
-        <div class="ui-label">OVERLOAD</div>
+        <div class="ui-label">ENERGY</div>
         <div class="bar-container"><div id="overload-bar"></div></div>
         <div class="skill-row">
             <span class="skill-label">DASH</span>
@@ -140,10 +151,22 @@
             <span class="skill-label">RING</span>
             <div class="skill-bar-bg"><div id="ring-fill" class="skill-bar-fill" style="background: #ffcc00; box-shadow: 0 0 8px #ffcc00;"></div></div>
         </div>
+        
+        <div class="skill-row">
+            <span class="skill-label">B.HOLE</span>
+            <div class="skill-bar-bg"><div id="bh-fill" class="skill-bar-fill" style="background: #9900ff; box-shadow: 0 0 8px #9900ff;"></div></div>
+        </div>
+        
         <div id="blade-status-ui">NEON BLADE READY</div>
         <div id="difficulty-ui">
             System Intensity: <span id="intensity-val">100</span>% <br>
             Defeated Bosses: <span id="boss-count">0</span>
+        </div>
+        
+        <div id="combo-ui">
+            <div class="combo-count">x<span id="combo-number">0</span></div>
+            <div class="combo-text">COMBO OVERLOAD</div>
+            <div id="combo-timer-container"><div id="combo-timer-bar"></div></div>
         </div>
     </div>
 
@@ -155,7 +178,6 @@
     <canvas id="gameCanvas"></canvas>
 
 <script>
-// ==================== CRAZYGAMES SDK 初始化 ====================
 let cgsdk = null;
 try {
     if (window.CrazyGames && window.CrazyGames.SDK) {
@@ -199,6 +221,125 @@ let player = {
     hp: 100, maxHp: 100, type: 'knight', 
     multiShot: 1, atkBonus: 1.0, invincibleTimer: 0
 };
+
+let comboCount = 0;
+let comboTimer = 0;
+const COMBO_DURATION = 120; 
+
+let blackHoles = [];
+let blackHoleCooldown = 0;
+const BH_COOLDOWN_MAX = 600; 
+const BH_DURATION = 300;     
+let currentBladeRotation = 0; 
+
+function addCombo() {
+    comboCount++;
+    comboTimer = COMBO_DURATION;
+    const ui = document.getElementById('combo-ui');
+    if (ui) {
+        ui.style.display = 'flex';
+        document.getElementById('combo-number').innerText = comboCount;
+        const countEl = document.querySelector('.combo-count');
+        countEl.style.transform = 'scale(1.3) skewX(-10deg)';
+        setTimeout(() => countEl.style.transform = 'scale(1) skewX(-10deg)', 50);
+    }
+}
+
+function updateComboSystem() {
+    if (comboTimer > 0) {
+        comboTimer--;
+        let percent = (comboTimer / COMBO_DURATION) * 100;
+        const bar = document.getElementById('combo-timer-bar');
+        if (bar) bar.style.width = percent + '%';
+    } else {
+        if (comboCount > 0) {
+            comboCount = 0;
+            const ui = document.getElementById('combo-ui');
+            if (ui) ui.style.display = 'none';
+        }
+    }
+}
+
+function triggerBlackHole() {
+    if (blackHoleCooldown > 0 || isPaused || !gameStarted || isGameOver) return;
+    
+    const speed = 3;
+    blackHoles.push({
+        x: player.x,
+        y: player.y,
+        vx: Math.cos(player.angle) * speed,
+        vy: Math.sin(player.angle) * speed,
+        radius: 180,
+        life: BH_DURATION,
+        pulse: 0
+    });
+    blackHoleCooldown = BH_COOLDOWN_MAX;
+}
+
+function updateBlackHoles() {
+    if (blackHoleCooldown > 0) {
+        blackHoleCooldown--;
+    }
+
+    for (let i = blackHoles.length - 1; i >= 0; i--) {
+        let bh = blackHoles[i];
+        bh.x += bh.vx;
+        bh.y += bh.vy;
+        bh.life--;
+        bh.pulse += 0.15;
+        
+        bh.vx *= 0.98;
+        bh.vy *= 0.98;
+
+        enemies.forEach(en => {
+            let dx = bh.x - en.x;
+            let dy = bh.y - en.y;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < bh.radius) {
+                let force = (bh.radius - dist) / 15;
+                en.x += (dx / dist) * force;
+                en.y += (dy / dist) * force;
+            }
+        });
+
+        if (bh.life <= 0) blackHoles.splice(i, 1);
+    }
+}
+
+function drawBlackHoles() {
+    blackHoles.forEach(bh => {
+        ctx.save();
+        let grad = ctx.createRadialGradient(bh.x, bh.y, 0, bh.x, bh.y, bh.radius * 0.6);
+        grad.addColorStop(0, '#000');
+        grad.addColorStop(0.4, '#330066');
+        grad.addColorStop(0.7, 'rgba(153, 0, 255, 0.3)');
+        grad.addColorStop(1, 'transparent');
+        
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        let s = 1 + Math.sin(bh.pulse) * 0.1;
+        ctx.arc(bh.x, bh.y, bh.radius * 0.6 * s, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#000';
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#9900ff';
+        ctx.beginPath();
+        ctx.arc(bh.x, bh.y, 25, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.strokeStyle = '#00ffcc';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for(let j=0; j<3; j++) {
+            let r = 30 + j * 15;
+            let offset = bh.pulse + j;
+            ctx.arc(bh.x, bh.y, r, offset, offset + 2);
+            ctx.stroke();
+        }
+        ctx.restore();
+    });
+}
 
 const bossDatabase = [
     { name: "NEON TITAN", hp: 400, size: 80, speed: 1.2, color: "#ff0055", type: "titan" },
@@ -253,6 +394,9 @@ function resetGame() {
     particles = []; blades = []; dashCooldown = 0; isDashing = false; ringCooldown = 0;
     drone.active = false; isGameOver = false;
     
+    comboCount = 0; comboTimer = 0; blackHoles = []; blackHoleCooldown = 0; currentBladeRotation = 0;
+    document.getElementById('combo-ui').style.display = 'none';
+    
     document.getElementById('high-score').innerText = highScore;
     const revBtn = document.getElementById('revive-btn');
     if(revBtn) {
@@ -295,6 +439,10 @@ function updateCooldownUI() {
     if(dFill) dFill.style.width = (dashCooldown > 0 ? (1 - dashCooldown / MAX_DASH_CD) * 100 : 100) + "%";
     const rFill = document.getElementById('ring-fill');
     if(rFill) rFill.style.width = (ringCooldown > 0 ? (1 - ringCooldown / MAX_RING_CD) * 100 : 100) + "%";
+    
+    // 修改：新增黑洞技能條的更新邏輯
+    const bhFill = document.getElementById('bh-fill');
+    if(bhFill) bhFill.style.width = (blackHoleCooldown > 0 ? (1 - blackHoleCooldown / BH_COOLDOWN_MAX) * 100 : 100) + "%";
 }
 
 function triggerDamageFeedback(amt) {
@@ -406,6 +554,8 @@ window.addEventListener('keydown', e => {
     if(e.key === 'Escape' || key === 'p') togglePause(); 
     if(e.key === 'Shift' && dashCooldown <= 0 && gameStarted && !isPaused) { isDashing = true; dashTimer = 10; dashCooldown = MAX_DASH_CD; }
     if(key === 'e' && ringCooldown <= 0 && gameStarted && !isPaused) { releaseNeonRing(); ringCooldown = MAX_RING_CD; }
+    
+    if(key === 'q') { triggerBlackHole(); }
 });
 window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 window.addEventListener('mousemove', e => player.angle = Math.atan2(e.clientY - player.y, e.clientX - player.x));
@@ -590,7 +740,7 @@ function updateBossAI() {
     
     if (boss) { 
         blades.forEach(b => { 
-            let rot = (gameTick * 0.05) + b.angleOffset; 
+            let rot = currentBladeRotation + b.angleOffset; 
             let bx = player.x + Math.cos(rot) * 90; 
             let by = player.y + Math.sin(rot) * 90; 
             if(Math.hypot(bx - boss.x, by - boss.y) < boss.size/2 + 35) { 
@@ -605,6 +755,12 @@ function updateBossAI() {
 
 function update() {
     if(!gameStarted || isPaused || isGameOver) return; 
+
+    updateComboSystem();
+    updateBlackHoles();
+    
+    currentBladeRotation += (comboCount >= 30 ? 0.1 : 0.05); 
+
     const hero = heroes[player.type]; gameTick++;
     if(damageFlash > 0) damageFlash--; 
     if(player.invincibleTimer > 0) player.invincibleTimer--; 
@@ -657,20 +813,17 @@ function update() {
         }
 
         let enemyKilled = false;
-        // 光刀判定 (修正：擴大判定半徑至 60，並將每幀傷害從 0.1 提升至 1.5，確保觸碰外圍即刻殺傷)
         for (let b of blades) { 
-            let rot = (gameTick * 0.05) + b.angleOffset; 
+            let rot = currentBladeRotation + b.angleOffset; 
             let bx = player.x + Math.cos(rot) * 90; 
             let by = player.y + Math.sin(rot) * 90; 
-            if (Math.hypot(bx - e.x, by - e.y) < 60) { 
+            if (Math.hypot(bx - e.x, by - e.y) < 35) { 
+                // 修改：傷害從 0.1 提升至 1.5，避免光刀穿過時未能秒殺敵人！
                 e.hp -= (1.5 * player.atkBonus); 
                 if(e.hp <= 0) { 
                     enemyKilled = true; 
                     createExplosion(e.x, e.y, heroes[player.type].color); 
-                } else {
-                    e.x += (e.x - bx) * 0.15;
-                    e.y += (e.y - by) * 0.15;
-                }
+                } 
                 break; 
             } 
         }
@@ -694,7 +847,11 @@ function update() {
                         if (nextTarget) { let nextAngle = Math.atan2(nextTarget.y - e.y, nextTarget.x - e.x); b.x = e.x; b.y = e.y; b.vx = Math.cos(nextAngle) * 16; b.vy = Math.sin(nextAngle) * 16; } 
                         else { bullets.splice(j, 1); } 
                     } else { 
-                        if(b.type !== 'ring') bullets.splice(j, 1); 
+                        if(b.type !== 'ring') {
+                            if (comboCount < 70) {
+                                bullets.splice(j, 1); 
+                            }
+                        }
                     }
                     break;
                 }
@@ -704,6 +861,9 @@ function update() {
         if (enemyKilled) {
             if(Math.random() > 0.70) collectibles.push({x: e.x, y: e.y});
             enemies.splice(i, 1);
+            
+            addCombo();
+
             score += e.isElite ? 200 : 100; 
             document.getElementById('score').innerText = Math.floor(score);
             if(score >= lastUpgradeThresh + 2000) { lastUpgradeThresh += 2000; showUpgradeScreen(); }
@@ -732,12 +892,16 @@ function draw() {
     if(gameStarted) {
         drawGrid(); const hero = heroes[player.type];
         particles.forEach(p => { ctx.globalAlpha = p.life / (p.isTrail ? 12 : 25); ctx.fillStyle = p.color; if(p.isTrail) { ctx.beginPath(); ctx.arc(p.x, p.y, 10, 0, Math.PI*2); ctx.fill(); } else { ctx.fillRect(p.x, p.y, 5, 5); } }); ctx.globalAlpha = 1.0;
-        blades.forEach(b => { let rot = (gameTick * 0.05) + b.angleOffset; let bx = player.x + Math.cos(rot) * 90; let by = player.y + Math.sin(rot) * 90; ctx.save(); ctx.translate(bx, by); ctx.rotate(rot + Math.PI / 2); ctx.fillStyle = hero.color; ctx.shadowBlur = 25; ctx.shadowColor = hero.color; ctx.beginPath(); ctx.moveTo(0, -45); ctx.lineTo(8, 0); ctx.lineTo(0, 45); ctx.lineTo(-8, 0); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0; ctx.restore(); });
+        blades.forEach(b => { 
+            let rot = currentBladeRotation + b.angleOffset; 
+            let bx = player.x + Math.cos(rot) * 90; let by = player.y + Math.sin(rot) * 90; ctx.save(); ctx.translate(bx, by); ctx.rotate(rot + Math.PI / 2); ctx.fillStyle = hero.color; ctx.shadowBlur = 25; ctx.shadowColor = hero.color; ctx.beginPath(); ctx.moveTo(0, -45); ctx.lineTo(8, 0); ctx.lineTo(0, 45); ctx.lineTo(-8, 0); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0; ctx.restore(); });
         if (drone.active) { let dx = player.x + Math.cos(drone.angle) * drone.radius; let dy = player.y + Math.sin(drone.angle) * drone.radius; ctx.strokeStyle = drone.color; ctx.lineWidth = 1; ctx.globalAlpha = 0.3; ctx.beginPath(); ctx.moveTo(player.x, player.y); ctx.lineTo(dx, dy); ctx.stroke(); ctx.globalAlpha = 1.0; ctx.fillStyle = drone.color; ctx.shadowBlur = 15; ctx.shadowColor = drone.color; ctx.beginPath(); ctx.moveTo(dx, dy - 10); ctx.lineTo(dx + 10, dy); ctx.lineTo(dx, dy + 10); ctx.lineTo(dx - 10, dy); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0; }
         ctx.fillStyle = '#00ffcc'; collectibles.forEach(c => ctx.fillRect(c.x-5, c.y-5, 10, 10));
         bullets.forEach(b => { ctx.fillStyle = b.type === 'ring' ? '#00ffcc' : (b.type === 'chain' ? drone.color : '#ffff00'); ctx.beginPath(); ctx.arc(b.x, b.y, (b.type === 'ring' ? 7 : 5) * (b.damage > 1.5 ? 1.3 : 1), 0, Math.PI*2); ctx.fill(); if (b.type === 'chain') { ctx.shadowBlur = 10; ctx.shadowColor = drone.color; ctx.fill(); ctx.shadowBlur = 0; } });
         bossBullets.forEach(b => { ctx.fillStyle = b.color || '#fff'; ctx.shadowBlur = b.isHeavy ? 25 : 12; ctx.shadowColor = ctx.fillStyle; ctx.beginPath(); ctx.arc(b.x, b.y, b.radius || 6, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0; });
         
+        drawBlackHoles();
+
         enemies.forEach(e => {
             if(e.isElite) {
                 ctx.fillStyle = '#aa00ff'; 
